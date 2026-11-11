@@ -1,5 +1,7 @@
 # Vehicle Shop Statistics
 
+<img src="media/icon.png" alt="Vehicle Shop Statistics icon" width="128" height="128">
+
 Compare vehicles in a separate specifications grid without changing descriptions.
 
 ## Install
