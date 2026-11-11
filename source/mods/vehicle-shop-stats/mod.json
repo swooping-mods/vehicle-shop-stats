@@ -1,0 +1,12 @@
+{
+  "id": "vehicle-shop-stats",
+  "kind": "native",
+  "version": "0.2.0",
+  "display_name": "Vehicle Shop Statistics",
+  "gameplay": true,
+  "feature_dependencies": [],
+  "play_help": [
+    "Open the garage Vehicles page to compare a separate specifications grid.",
+    "Descriptions stay in their original area; statistics never replace them."
+  ]
+}
