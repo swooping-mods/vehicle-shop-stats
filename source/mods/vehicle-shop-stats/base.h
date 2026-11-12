@@ -1,9 +1,11 @@
 /* Each package compiles its own reflection helpers; no feature DLL dependency. */
 #include "../../runtime/native/gameplay.h"
 #include "../../runtime/native/input.h"
+#include "../../runtime/native/local_actor.h"
 #include "api.h"
+#include "checked.h"
 int _fltused=0;
-static PTR component_m,menu_open_m,text_m,world_f,focus_m,typing_m,time_m;
+static PTR component_m,menu_open_m,text_m,world_f,focus_m,typing_m,time_m,alive_m,restoring_m;
 static void (*static_field)(PTR,void *);
 static const unsigned short *(*string_chars)(PTR);static int (*string_length)(PTR);
 /* Retain the legacy high-bit mask while honoring shared input admission. */
@@ -12,22 +14,23 @@ static PTR (*foreground)(void);static DWORD (*window_pid)(PTR,DWORD *);
 static int vehicles_page,upgrades_page,fleet_page;
 static PTR log_file;static DWORD owner_thread;
 static void event(const char *s){if(!log_file)return;char b[256],*p=cat(b,"{\"event\":\"");p=cat(p,s);p=cat(p,"\"}\n");DWORD n=0;WriteFile(log_file,b,(DWORD)(p-b),&n,0);}
-static PTR member(PTR object,const char *name){PTR value=0;if(object){PTR f=get_field(object_class(object),name);if(f)field_value(object,f,&value);}return value;}
-static int int_field(PTR object,const char *name){int value=0;if(object){PTR f=get_field(object_class(object),name);if(f)field_value(object,f,&value);}return value;}
-static float float_field(PTR object,const char *name){float value=0;if(object){PTR f=get_field(object_class(object),name);if(f)field_value(object,f,&value);}return value;}
-static char *string_text(char *p,PTR string,unsigned limit){if(string){int n=string_length(string);const unsigned short *s=string_chars(string);for(int i=0;i<n&&limit;i++,limit--)*p++=s[i]>=32&&s[i]<127?(char)s[i]:'?';}*p=0;return p;}
+static PTR member(PTR object,const char *name){PTR value=0;stats_field(object,name,&value);return value;}
+static int int_field(PTR object,const char *name){int value=-1;stats_field(object,name,&value);return value;}
+static float float_field(PTR object,const char *name){float value=-1;stats_field(object,name,&value);return value;}
+static char *string_text(char *p,PTR string,unsigned limit){if(string){int n=string_length(string);const unsigned short *s=string_chars(string);for(int i=0;s&&i<n&&limit;i++,limit--)*p++=s[i]>=32&&s[i]<127?(char)s[i]:'?';}*p=0;return p;}
 static char *decimal_text(char *p,float value){if(value<0){*p++='-';value=-value;}if(value!=value||value>10000000)return cat(p,"?");unsigned n=(unsigned)(value*10+.5f);p=num(p,n/10);*p++='.';*p++=(char)('0'+n%10);*p=0;return p;}
-static void text(PTR target,const char *s){if(!target)return;int ok=1;void *a[]={da.string(s)};call(text_m,target,a,&ok);}
+static int text(PTR target,const char *s){if(!target||!s)return 0;int ok=1;void *a[]={da.string(s)};if(!a[0])return 0;call(text_m,target,a,&ok);return ok;}
 static int down(int vk){return (key(vk)&0x8000)!=0;}
-static PTR garage_menu(PTR walker){int ok=1;void *a[]={dtype("MoonCleaners","MoonGarageMenu")};PTR menu=call(component_m,walker,a,&ok);return ok&&menu&&boolean(menu_open_m,menu,&ok)&&ok?menu:0;}
-static int input_ok(void){int ok=1;DWORD pid=0;window_pid(foreground(),&pid);return pid==GetCurrentProcessId()&&boolean(focus_m,0,&ok)&&!boolean(typing_m,0,&ok)&&ok;}
+static int alive(PTR object){return stats_alive(alive_m,object);}
+static PTR garage_menu(PTR walker){int ok=1;void *a[]={dtype("MoonCleaners","MoonGarageMenu")};PTR menu=call(component_m,walker,a,&ok);return ok&&alive(menu)&&stats_boolean(menu_open_m,menu,&ok)&&ok?menu:0;}
+static int input_ok(void){int ok=1;DWORD pid=0;window_pid(foreground(),&pid);return pid==GetCurrentProcessId()&&stats_boolean(focus_m,0,&ok)&&!stats_boolean(typing_m,0,&ok)&&ok;}
 static int on_thread(void){DWORD id=GetCurrentThreadId();if(!owner_thread)owner_thread=id;return id==owner_thread;}
 static int bind_base(PTR domain,PTR game,const char *logname){
- if(!bind_runtime(domain,game)||!dapi(game))return 0;
+ if(!bind_runtime(domain,game)||!dapi(game)||!moon_local_actor_bind())return 0;
  static_field=(void(*)(PTR,void*))GetProcAddress(game,"il2cpp_field_static_get_value");string_chars=(const unsigned short*(*)(PTR))GetProcAddress(game,"il2cpp_string_chars");string_length=(int(*)(PTR))GetProcAddress(game,"il2cpp_string_length");
  PTR user=LoadLibraryA("user32.dll");foreground=(PTR(*)(void))GetProcAddress(user,"GetForegroundWindow");window_pid=(DWORD(*)(PTR,DWORD*))GetProcAddress(user,"GetWindowThreadProcessId");
 #define B(F,NS,T,N,S) F=dmethod(NS,T,N,S);if(!F)return 0
- B(component_m,"UnityEngine","Component","GetComponent","System.Type");B(menu_open_m,"MoonCleaners","MoonGarageMenu","get_IsOpen","");B(text_m,"TMPro","TMP_Text","set_text","System.String");B(focus_m,"UnityEngine","Application","get_isFocused","");B(typing_m,"MoonCleaners","MoonInput","get_Typing","");B(time_m,"UnityEngine","Time","get_unscaledTime","");
+ B(component_m,"UnityEngine","Component","GetComponent","System.Type");B(menu_open_m,"MoonCleaners","MoonGarageMenu","get_IsOpen","");B(text_m,"TMPro","TMP_Text","set_text","System.String");B(focus_m,"UnityEngine","Application","get_isFocused","");B(typing_m,"MoonCleaners","MoonInput","get_Typing","");B(time_m,"UnityEngine","Time","get_unscaledTime","");B(alive_m,"UnityEngine","Object","op_Implicit","UnityEngine.Object");B(restoring_m,"MoonCleaners","MoonWorld","get_IsRestoringRendering","");
 #undef B
  PTR (*nested_type)(PTR,PTR*)=(PTR(*)(PTR,PTR*))GetProcAddress(game,"il2cpp_class_get_nested_types");const char *(*type_name)(PTR)=(const char*(*)(PTR))GetProcAddress(game,"il2cpp_class_get_name");
  if(!nested_type||!type_name)return 0;PTR it=0,k,page=0,outer=find_class("MoonCleaners","MoonGarageMenu");while(outer&&(k=nested_type(outer,&it)))if(deq(type_name(k),"Page"))page=k;
